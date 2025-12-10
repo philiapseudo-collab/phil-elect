@@ -1,0 +1,17 @@
+# FastAPI and server dependencies
+fastapi>=0.100.0,<0.110.0
+uvicorn>=0.23.0,<0.30.0
+pydantic>=2.0.0,<3.0.0
+
+# OpenAI API client
+openai>=1.0.0,<2.0.0
+
+# Supabase client
+supabase>=2.0.0,<3.0.0
+
+# Environment variable management
+python-dotenv>=1.0.0,<2.0.0
+
+# HTTP requests for M-Pesa API
+requests>=2.31.0,<3.0.0
+
