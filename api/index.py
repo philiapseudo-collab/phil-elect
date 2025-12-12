@@ -10,7 +10,7 @@ import re
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, Request, Response, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # Import services (relative imports for Vercel)
 from .services.openai_service import analyze_message
@@ -43,14 +43,11 @@ class TextMessage(BaseModel):
 
 class Message(BaseModel):
     """WhatsApp message object."""
-    from_: Optional[str] = None  # 'from' is a Python keyword, using from_
+    from_: Optional[str] = Field(None, alias="from")  # 'from' is a Python keyword, using from_
     id: str
     timestamp: str
     type: str
     text: Optional[TextMessage] = None
-
-    class Config:
-        fields = {"from_": "from"}
 
 
 class Contact(BaseModel):
