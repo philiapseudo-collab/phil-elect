@@ -697,29 +697,29 @@ async def handle_paystack_webhook(request: Request):
             amount = payment_data.get("amount", 0)  # Amount in kobo/cents
             customer_email = payment_data.get("customer", {}).get("email", "")
             
-                # Extract order_id from reference
-                # Format: "ORD-{first 8 chars of order_id}" or "ORD-{first 8 chars}-CARD"
-                if reference.startswith("ORD-"):
-                    ref_parts = reference.replace("ORD-", "").split("-")
-                    order_id_prefix = ref_parts[0]
-                    
-                    # Find order in database by matching first 8 characters of order_id
-                    # Only fetch PENDING orders to reduce load
-                    supabase = get_supabase_client()
-                    orders_response = supabase.table("orders").select("*").eq("status", "PENDING").execute()
-                    
-                    # Search for order where order_id starts with the prefix
-                    matching_order = None
-                    for order in orders_response.data:
-                        order_id = order.get("order_id", "")
-                        # Compare first 8 characters (order_id_prefix is 8 chars)
-                        if len(order_id) >= 8 and order_id[:8] == order_id_prefix:
-                            matching_order = order
-                            break
-                    
-                    if not matching_order:
-                        logger.warning(f"No PENDING order found matching reference: {reference} (prefix: {order_id_prefix})")
-                        return {"status": "ok", "message": "Order not found or already processed"}
+            # Extract order_id from reference
+            # Format: "ORD-{first 8 chars of order_id}" or "ORD-{first 8 chars}-CARD"
+            if reference.startswith("ORD-"):
+                ref_parts = reference.replace("ORD-", "").split("-")
+                order_id_prefix = ref_parts[0]
+                
+                # Find order in database by matching first 8 characters of order_id
+                # Only fetch PENDING orders to reduce load
+                supabase = get_supabase_client()
+                orders_response = supabase.table("orders").select("*").eq("status", "PENDING").execute()
+                
+                # Search for order where order_id starts with the prefix
+                matching_order = None
+                for order in orders_response.data:
+                    order_id = order.get("order_id", "")
+                    # Compare first 8 characters (order_id_prefix is 8 chars)
+                    if len(order_id) >= 8 and order_id[:8] == order_id_prefix:
+                        matching_order = order
+                        break
+                
+                if not matching_order:
+                    logger.warning(f"No PENDING order found matching reference: {reference} (prefix: {order_id_prefix})")
+                    return {"status": "ok", "message": "Order not found or already processed"}
                 
                 order_id = matching_order.get("order_id")
                 user_phone = matching_order.get("user_phone")
@@ -736,11 +736,48 @@ async def handle_paystack_webhook(request: Request):
                     supabase.table("orders").update(update_data).eq("order_id", order_id).execute()
                     logger.info(f"Order {order_id} updated to PAID. Reference: {reference}")
                     
-                    # Send WhatsApp confirmation message
+                    # Convert amount from cents to KES and format with commas
+                    amount_kes = int(amount / 100)
+                    amount_formatted = f"{amount_kes:,}"
+                    
+                    # Generate short ID (last 5 characters, uppercase)
+                    short_id = order_id[-5:].upper()
+                    
+                    # Send premium WhatsApp confirmation message to customer
                     if user_phone:
-                        confirmation_message = f"✅ Payment Received! Your Order #{order_id[:8]} is confirmed.\n\nWe'll process your order shortly. Thank you!"
-                        send_whatsapp_message(user_phone, confirmation_message)
+                        customer_message = f"""✅ **PAYMENT RECEIVED!**
+
+Thank you! Your payment of **KES {amount_formatted}** has been confirmed.
+
+🧾 **Order Ref:** #{short_id}
+📦 **Status:** Packing in Progress
+
+**What happens next?**
+Our dispatch team has been notified. We will call you shortly to arrange delivery/pickup.
+
+_Need help? Call us at 0708-116-809_"""
+                        
+                        send_whatsapp_message(user_phone, customer_message)
                         logger.info(f"Confirmation message sent to {user_phone} for order {order_id}")
+                    
+                    # Send admin notification (optional - soft fail)
+                    admin_phone = os.environ.get("ADMIN_PHONE")
+                    if admin_phone:
+                        try:
+                            admin_message = f"""💰 **NEW SALE ALERT!**
+
+User: {user_phone}
+Amount: KES {amount_formatted}
+Ref: #{short_id}
+
+*Please check the dashboard and arrange delivery!*"""
+                            
+                            send_whatsapp_message(admin_phone, admin_message)
+                            logger.info(f"Admin notification sent to {admin_phone} for order {order_id}")
+                        except Exception as admin_error:
+                            logger.error(f"❌ Failed to notify admin: {str(admin_error)}")
+                    else:
+                        logger.warning("⚠️ Admin phone not set. Skipping owner alert.")
                 else:
                     logger.info(f"Order {order_id} already processed (status: {current_status}), skipping update")
                 
