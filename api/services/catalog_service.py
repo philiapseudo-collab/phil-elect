@@ -126,6 +126,45 @@ def get_all_items() -> List[Dict[str, Any]]:
         raise DatabaseError("System maintenance: Database unavailable")
 
 
+def find_products(search_term: str, limit: int = 3) -> List[Dict[str, Any]]:
+    """
+    Find products by category keyword using case-insensitive partial match.
+    Returns top N results (default: 3).
+    
+    Args:
+        search_term: Category keyword (e.g., "TV", "Fridge", "Microwave")
+        limit: Maximum number of results to return (default: 3)
+        
+    Returns:
+        List of product dictionaries with keys: sku, name, price, stock, image_url
+        Returns empty list if not found or database error
+        
+    Raises:
+        DatabaseError: If Supabase connection fails
+    """
+    try:
+        supabase = get_supabase_client()
+        
+        # Perform case-insensitive partial match search, limit results
+        response = supabase.table("products").select("*").ilike("name", f"%{search_term}%").limit(limit).execute()
+        
+        if response.data:
+            logger.info(f"Found {len(response.data)} products matching '{search_term}'")
+            return response.data
+        
+        logger.info(f"No products found matching category: {search_term}")
+        return []
+        
+    except ValueError as e:
+        # Supabase credentials not configured
+        logger.error(f"Database connection failed: {str(e)}")
+        raise DatabaseError("System maintenance: Database not configured")
+    except Exception as e:
+        # Any other database error
+        logger.error(f"Database query failed for search term '{search_term}': {str(e)}")
+        raise DatabaseError("System maintenance: Database unavailable")
+
+
 def verify_stock(sku: str, quantity: int = 1) -> bool:
     """
     Check if product has sufficient stock.
